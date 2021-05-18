@@ -1,0 +1,42 @@
+.test {
+    color: red;
+    font-size: x-large;
+}
+
+.
+a-r {
+    text-align: right;
+}
+
+m1-t {
+    margin-top: 10px;
+}
+
+.m1-l {
+    margin-left: 10px;
+}
+
+.m1-tl {
+    margin-top: 10px;
+    margin-left: 10px;
+}
+
+.m1-lr {
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+button {
+    margin: 5px;
+    padding: 10px;
+}
+
+input {
+    margin: 5px;
+    padding: 10px;
+}
+
+textarea {
+    margin: 5px;
+    padding: 10px;
+}
