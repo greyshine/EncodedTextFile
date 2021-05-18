@@ -1,7 +1,7 @@
 # EncodedTextFile
 
-Create a keystore:
-https://mkyong.com/spring-boot/spring-boot-ssl-https-examples/
+Create a keystore:  
+[https://mkyong.com/spring-boot/spring-boot-ssl-https-examples/]()
 
     keytool -genkeypair -keyalg RSA -keysize 2048 -storetype PKCS12 -keystore keystore.p12 -validity 3650
 
