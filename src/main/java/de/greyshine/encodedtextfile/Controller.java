@@ -266,5 +266,4 @@ public class Controller {
     public static class LoginRequestBody {
         private String password;
     }
-
 }
