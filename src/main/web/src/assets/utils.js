@@ -7,7 +7,7 @@ export default {
     },
 
     getToken() {
-        return tokenValue;
+      return tokenValue;
     },
 
     setToken(token) {

@@ -71,6 +71,4 @@ public class EncryptorTests {
             encryptor.decrypt(new StringBuffer(password).reverse().toString(), new ByteArrayInputStream(baos.toByteArray()));
         });
     }
-
-
 }

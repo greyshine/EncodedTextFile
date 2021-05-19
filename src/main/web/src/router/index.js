@@ -1,6 +1,5 @@
 import {createRouter, createWebHistory} from "vue-router";
 import utils from "@/assets/utils"
-import Home from "../views/Home.vue";
 import Textinput from "@/components/Textinput";
 import Login from "@/components/Login";
 
@@ -15,23 +14,6 @@ const routes = [
   }
 ];
 
-const routes2 = [
-  {
-    path: "/",
-    name: "Home",
-    component: Home,
-  },
-  {
-    path: "/about",
-    name: "About",
-    // route level code-splitting
-    // this generates a separate chunk (about.[hash].js) for this route
-    // which is lazy-loaded when the route is visited.
-    component: () =>
-        import(/* webpackChunkName: "about" */ "../views/About.vue"),
-  },
-];
-
 const router = createRouter({
   history: createWebHistory(),
   routes,
@@ -39,10 +21,10 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
 
-  console.log('router:: router.beforeEach');
-  console.log('router:: to', to);
-  console.log('router:: from', from);
-  console.log('router:: next', next);
+  //console.log('router:: router.beforeEach');
+  //console.log('router:: to', to);
+  //console.log('router:: from',from);
+  //console.log('router:: next',next);
 
   const tokenExists = utils.getToken() != null;
   console.log('router:: token exists', tokenExists, utils.getToken());
