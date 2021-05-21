@@ -16,23 +16,34 @@ import org.springframework.web.server.ResponseStatusException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+
+import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
 @Slf4j
 @RestController
 public class Controller {
 
+    public final static List<String> accesses = new ArrayList<>();
+    public static final List<String> LOGS = new ArrayList<>();
     private final static List<Character> PWD = new ArrayList<>();
+    // 10 min
     private static final long VALID_INTERVAL = 10 * 60 * 1000;
     private final static int maxBadLogins = 5;
+    // 10 min
     private final static int badLoginTimeToLive = 10 * 60 * 1000;
+    private final static int loginfoCallsNeeded = 3;
+    private static final List<BadLogin> badLogins = new ArrayList<>(maxBadLogins);
     private static String token = null;
     private static String ip = null;
-    private static long maxValidTime = Long.MAX_VALUE;
-    private static List<Long> badLogins = new ArrayList<>(maxBadLogins);
-
+    /**
+     * Time until the token is valid
+     */
+    private static long maxTokenValidTime = Long.MAX_VALUE;
+    private static int loginfoCalls = 0;
     public final String HEADER_TOKEN = "token";
-
     @Autowired
     private DataService dataService;
 
@@ -112,27 +123,52 @@ public class Controller {
         return ip;
     }
 
+    @GetMapping(value = "/status", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String loginfos() {
+
+        if (loginfoCalls < loginfoCallsNeeded) {
+            loginfoCalls++;
+            log.info((loginfoCallsNeeded - loginfoCalls) + " missing status calls");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+
+        loginfoCalls = 0;
+        cleanBadLogins();
+
+        final StringBuilder sb = new StringBuilder();
+
+        sb.append("time: ").append(new Date());
+        sb.append("----------------------------------------\n");
+        sb.append("cur login=" + (PWD.size() > 0) + "\n");
+        sb.append("----------------------------------------\n");
+        sb.append("badlogins: ").append(badLogins.size()).append("; ").append(badLogins).append('\n');
+
+        badLogins.forEach(badLogin -> sb.append(badLogin).append('\n'));
+
+        sb.append("----------------------------------------\n");
+        sb.append("Logs (" + LOGS.size() + "):\n");
+        LOGS.forEach(log -> sb.append("- ").append(log).append('\n'));
+
+        return sb.toString().trim();
+    }
+
     @PostMapping(value = "/api/login", consumes = MediaType.APPLICATION_JSON_VALUE)
     public synchronized String login(@RequestBody LoginRequestBody loginRequestBody, HttpServletRequest request, HttpServletResponse response) throws IOException {
 
-        final Enumeration<String> headers = request.getHeaderNames();
-        while (headers.hasMoreElements()) {
-            final String hName = headers.nextElement();
-            //log.debug( "HEADER {}={}", hName, request.getHeader(hName) );
-        }
-
-        cleanBadLogins();
-
         final String password = loginRequestBody.getPassword();
+        cleanBadLogins();
 
         if (badLogins.size() >= maxBadLogins) {
 
-            log.warn("user from {} exceeded bad logins." + getClientIpAddr(request));
+            internalLog(request, "too many bad logins");
+
+            log.warn("user from {} exceeded bad logins password={}.", getClientIpAddr(request), password);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Too many users, you dick-head!");
 
         } else if (!dataService.isPassword(password)) {
             log.info("login fail ip={}", getClientIpAddr(request));
-            badLogins.add(System.currentTimeMillis() + badLoginTimeToLive);
+            internalLog(request, "login failure");
+            badLogins.add(new BadLogin(request));
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Credentials suck!");
         }
 
@@ -153,15 +189,24 @@ public class Controller {
     }
 
     private void cleanBadLogins() {
-        for (Long timeToLiveUntil : new HashSet<>(badLogins)) {
-            if (System.currentTimeMillis() > timeToLiveUntil) {
-                badLogins.remove(timeToLiveUntil);
+
+        for (BadLogin badLogin : new HashSet<>(badLogins)) {
+
+            if (!badLogin.isValid()) {
+                badLogins.remove(badLogin);
             }
         }
     }
 
     @PostMapping(value = "/api/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
     public synchronized boolean logout(HttpServletRequest request) {
+
+        final String ip = getClientIpAddr(request);
+
+        if (!ip.equals(Controller.ip)) {
+            log.info("logout from bad IP ({}); ignored", ip);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        }
 
         if (!isIp(request)) {
             log.info("logout from foreign IP ignored");
@@ -179,7 +224,7 @@ public class Controller {
     }
 
     private synchronized void refreshValidTime() {
-        maxValidTime = System.currentTimeMillis() + VALID_INTERVAL;
+        maxTokenValidTime = System.currentTimeMillis() + VALID_INTERVAL;
     }
 
     private synchronized boolean isTokenValid(String token, boolean refreshValidity) {
@@ -187,9 +232,9 @@ public class Controller {
         log.debug("token ->            {}", token);
         log.debug("Controller.token -> {}", Controller.token);
         log.debug("!PWD.empty -> {}", !PWD.isEmpty());
-        log.debug("maxValidTime > System.currentTimeMillis() -> {}", maxValidTime > System.currentTimeMillis());
+        log.debug("maxTokenValidTime > System.currentTimeMillis() -> {}", maxTokenValidTime > System.currentTimeMillis());
 
-        final boolean isValid = token != null && token.equalsIgnoreCase(Controller.token) && !PWD.isEmpty() && maxValidTime > System.currentTimeMillis();
+        final boolean isValid = token != null && token.equalsIgnoreCase(Controller.token) && !PWD.isEmpty() && maxTokenValidTime > System.currentTimeMillis();
 
         if (isValid && refreshValidity) {
             refreshValidTime();
@@ -203,7 +248,7 @@ public class Controller {
     public synchronized void invalidateToken() {
         setPwd(null);
         Controller.token = null;
-        maxValidTime = Long.MAX_VALUE;
+        maxTokenValidTime = Long.MAX_VALUE;
     }
 
     @GetMapping(value = "/api/data", produces = MediaType.TEXT_PLAIN_VALUE)
@@ -244,17 +289,28 @@ public class Controller {
 
         final String token = request.getHeader(HEADER_TOKEN);
 
-        boolean isOk = true;
-        isOk = isOk && isTokenValid(token, refreshValidity);
-        isOk = isOk && isIp(request);
+
+        final boolean isCorrectToken = isTokenValid(token, refreshValidity);
+        final boolean isCorrectIp = isIp(request);
+        final boolean isOk = isCorrectToken && isCorrectIp;
 
         if (!isOk) {
+            final String logText = "checkLoggedIn forbidden [tokenOk=" + isCorrectToken + " (" + token + "), ipOk=" + isCorrectIp + " (" + getClientIpAddr(request) + ")]";
+            log.info(logText);
+            internalLog(request, logText);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
     }
 
     private boolean isIp(HttpServletRequest request) {
         return request != null && ip != null && ip.equals(getClientIpAddr(request));
+    }
+
+    private synchronized void internalLog(HttpServletRequest request, Object object) {
+        while (LOGS.size() > 300) {
+            LOGS.remove(LOGS.size() - 1);
+        }
+        LOGS.add(0, LocalDateTime.now().format(ISO_LOCAL_DATE_TIME) + ", " + getClientIpAddr(request) + ", " + object);
     }
 
     @Data
@@ -265,5 +321,22 @@ public class Controller {
     @Data
     public static class LoginRequestBody {
         private String password;
+    }
+
+    @Data
+    private class BadLogin {
+
+        private final String time = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        private final String ip;
+        private long timeToLiveUntil;
+
+        private BadLogin(HttpServletRequest request) {
+            this.timeToLiveUntil = System.currentTimeMillis() + Controller.badLoginTimeToLive;
+            ip = getClientIpAddr(request);
+        }
+
+        public boolean isValid() {
+            return timeToLiveUntil > System.currentTimeMillis();
+        }
     }
 }
