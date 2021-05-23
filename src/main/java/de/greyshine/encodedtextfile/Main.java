@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
+import org.springframework.boot.web.servlet.context.ServletWebServerInitializedEvent;
 import org.springframework.boot.web.servlet.server.ServletWebServerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -36,7 +37,7 @@ public class Main {
     public static void main(String[] args) throws Exception {
 
         if (args.length < 1) {
-            System.err.println("usage e.g.: java -jar EcodedTextFile-VERSION.jar [--server.port=<https-port:default=8443>]  [--http.port=<http-port:default=none>] <filename.dat>");
+            System.err.println("usage e.g.: java -jar EncodedTextFile-VERSION.jar [--http.port=<http-port:default=none>] [--server.port=<https-port:default=8443> --server.ssl.key-store=<KEYSTORE.p12> --server.ssl.key-store-password==<KEYSTORE-PASSWORD>] <filename.dat>");
             System.err.println("keystore type is PKCS12 when starting with SSL/HTTPS (--server.port=<httpsPortNum> is in use)");
             System.err.println("path is " + new File(".").getAbsolutePath());
             System.exit(1);
@@ -103,9 +104,6 @@ public class Main {
     @EventListener
     public void onApplicationEvent(ContextRefreshedEvent event) {
 
-        log.info("http-port: {}", this.httpPort);
-        log.info("https-port: {}", this.httpsPort);
-
         log.info("file: {}", dataService.getFile());
 
         if (dataService.getFile() == null) {
@@ -114,5 +112,15 @@ public class Main {
         }
 
         log.info("Started ;-)");
+    }
+
+    @EventListener
+    public void onApplicationEvent(final ServletWebServerInitializedEvent event) {
+
+        log.info("http-port: {}", this.httpPort);
+        log.info("https-port: {}", this.httpsPort);
+
+        log.info("webserver: {}", event.getWebServer().getClass().getCanonicalName());
+        log.info("webserver.port: {}", event.getWebServer().getPort());
     }
 }

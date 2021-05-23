@@ -13,7 +13,7 @@
 
     <groupId>de.greyshine</groupId>
     <artifactId>EncodedTextFile</artifactId>
-    <version>1.1-SNAPSHOT</version>
+    <version>1.2-SNAPSHOT</version>
 
     <properties>
         <java.version>1.8</java.version>
@@ -47,9 +47,11 @@
     <build>
         <plugins>
             <plugin>
-                <!-- Muss gesetzt sein, damit die zu startende main automatisch im Jar eingetragen wird -->
+                <!-- Has to be set so the starting static main(...) is automatically registered with the jar. -->
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- https://stackoverflow.com/a/66824948/845117 -->
+                <version>${project.parent.version}</version>
             </plugin>
         </plugins>
     </build>

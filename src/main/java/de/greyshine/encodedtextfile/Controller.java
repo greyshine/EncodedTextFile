@@ -4,6 +4,7 @@ package de.greyshine.encodedtextfile;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.util.Assert;
@@ -25,6 +26,9 @@ import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 @Slf4j
 @RestController
 public class Controller {
+
+    @Value("${version}")
+    private String version;
 
     public final static List<String> accesses = new ArrayList<>();
     public static final List<String> LOGS = new ArrayList<>();
@@ -137,7 +141,8 @@ public class Controller {
 
         final StringBuilder sb = new StringBuilder();
 
-        sb.append("time: ").append(new Date());
+        sb.append("version: ").append(version).append('\n');
+        sb.append("time: ").append(new Date()).append('\n');
         sb.append("----------------------------------------\n");
         sb.append("cur login=" + (PWD.size() > 0) + "\n");
         sb.append("----------------------------------------\n");
