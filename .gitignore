@@ -1,4 +1,12 @@
 .idea
 target
+store
+**/.DS_Store
+
+.DS_Store
+application.properties
+keystore.p12
 
 EncodedTextFile.iml
+
+

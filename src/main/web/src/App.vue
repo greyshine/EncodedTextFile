@@ -35,12 +35,10 @@ export default defineComponent({
   created() {
 
     this.$root.bus = mitt();
-
     this.$root.bus.on('showButtons', (value) => {
-
-      if (value === 0) {
+      if (value === 0 || value === false) {
         this.displayButtons = 'none';
-      } else if (value === 1) {
+      } else if (value === 1 || value === true) {
         this.displayButtons = 'inline';
       }
     });
@@ -87,7 +85,7 @@ export default defineComponent({
 
             console.log('setting null...');
             utils.setToken(null);
-            this.displayButtons = 'none';
+            this.$root.bus.emit('showButtons', false);
 
             this.$router.replace('/login');
           });

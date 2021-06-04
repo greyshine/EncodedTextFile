@@ -3,10 +3,11 @@ package de.greyshine.encodedtextfile;
 
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.util.Assert;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,113 +16,49 @@ import org.springframework.web.server.ResponseStatusException;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+import static de.greyshine.encodedtextfile.Utils.MINUTES_10;
+import static de.greyshine.encodedtextfile.Utils.getClientIpAddr;
 import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+import static org.apache.commons.lang3.StringUtils.isBlank;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 @Slf4j
 @RestController
 public class Controller {
 
-    public final static List<String> accesses = new ArrayList<>();
+    public static final List<String> accesses = new ArrayList<>();
     public static final List<String> LOGS = new ArrayList<>();
-    private final static List<Character> PWD = new ArrayList<>();
-    // 10 min
-    private static final long VALID_INTERVAL = 10 * 60 * 1000;
-    private final static int maxBadLogins = 5;
-    // 10 min
-    private final static int badLoginTimeToLive = 10 * 60 * 1000;
-    private final static int loginfoCallsNeeded = 3;
-    private static final List<BadLogin> badLogins = new ArrayList<>(maxBadLogins);
-    private static String token = null;
-    private static String ip = null;
     /**
-     * Time until the token is valid
+     * Http Heder with the token information
      */
-    private static long maxTokenValidTime = Long.MAX_VALUE;
+    public static final String HEADER_TOKEN = "token";
+    private static final Set<TokenHolder> tokenHolders = new HashSet<>();
+    // 10 min
+    private static final long VALID_INTERVAL = MINUTES_10;
+    private static final int MAX_COUNT_BAD_LOGINS = 5;
+    // 10 min
+    private static final long badLoginTimeToLive = MINUTES_10;
+    /**
+     * Amount of calling '/status' in the browser until a screen is displayed.
+     * Before that 404 is returned.
+     */
+    private static final int loginfoCallsNeeded = 3;
+    private static final List<BadLogin> badLogins = new ArrayList<>();
     private static int loginfoCalls = 0;
-    public final String HEADER_TOKEN = "token";
+    @Value("${version}")
+    private String version;
+
     @Autowired
     private DataService dataService;
 
-    public synchronized static String getPwd() {
-
-        if (PWD.isEmpty()) {
-            return null;
-        }
-
-        final StringBuilder sb = new StringBuilder();
-        PWD.forEach(c -> sb.append(c));
-        return sb.toString();
-    }
-
-    public synchronized void setPwd(String pwd) {
-
-        Assert.isTrue(pwd == null || !pwd.isEmpty(), "Pwd is already set");
-
-        if (pwd == null) {
-
-            PWD.clear();
-
-        } else {
-
-            for (Character c : pwd.toCharArray()) {
-                PWD.add(c);
-            }
-        }
-    }
-
-    /**
-     * See: https://stackoverflow.com/a/21529994/845117
-     *
-     * @param request
-     * @return the client's IP
-     */
-    public static String getClientIpAddr(HttpServletRequest request) {
-
-        Assert.notNull(request, "HttpServletRequest must not be null");
-
-        String ip = request.getHeader("X-Forwarded-For");
-
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("Proxy-Client-IP");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("WL-Proxy-Client-IP");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("HTTP_X_FORWARDED_FOR");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("HTTP_X_FORWARDED");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("HTTP_X_CLUSTER_CLIENT_IP");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("HTTP_CLIENT_IP");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("HTTP_FORWARDED_FOR");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("HTTP_FORWARDED");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("HTTP_VIA");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getHeader("REMOTE_ADDR");
-        }
-        if (ip == null || ip.length() == 0 || ip.equalsIgnoreCase("unknown")) {
-            ip = request.getRemoteAddr();
-        }
-
-        return ip;
-    }
+    @Autowired
+    private Encryptor encryptor;
 
     @GetMapping(value = "/status", produces = MediaType.TEXT_PLAIN_VALUE)
     public String loginfos() {
@@ -137,9 +74,12 @@ public class Controller {
 
         final StringBuilder sb = new StringBuilder();
 
-        sb.append("time: ").append(new Date());
+        sb.append("version: ").append(version).append('\n');
+        sb.append("time: ").append(new Date()).append('\n');
         sb.append("----------------------------------------\n");
-        sb.append("cur login=" + (PWD.size() > 0) + "\n");
+        sb.append("TokenHolders:\n");
+        tokenHolders.forEach(th -> sb.append(th).append('\n'));
+        // TODO write current logins
         sb.append("----------------------------------------\n");
         sb.append("badlogins: ").append(badLogins.size()).append("; ").append(badLogins).append('\n');
 
@@ -155,112 +95,101 @@ public class Controller {
     @PostMapping(value = "/api/login", consumes = MediaType.APPLICATION_JSON_VALUE)
     public synchronized String login(@RequestBody LoginRequestBody loginRequestBody, HttpServletRequest request, HttpServletResponse response) throws IOException {
 
+        final String ip = getClientIpAddr(request);
         final String password = loginRequestBody.getPassword();
-        cleanBadLogins();
 
-        if (badLogins.size() >= maxBadLogins) {
+        if (isTooManyBadLogins()) {
 
             internalLog(request, "too many bad logins");
 
-            log.warn("user from {} exceeded bad logins password={}.", getClientIpAddr(request), password);
+            log.warn("user from {} exceeded bad logins password={}.", ip, password);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Too many users, you dick-head!");
 
-        } else if (!dataService.isPassword(password)) {
-            log.info("login fail ip={}", getClientIpAddr(request));
+        } else if (!dataService.isFileAndPasswordOrCreate(loginRequestBody.getFilename(), loginRequestBody.getPassword())) {
+
+            log.info("login fail ip={}", ip);
             internalLog(request, "login failure");
             badLogins.add(new BadLogin(request));
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Credentials suck!");
         }
 
-        setPwd(password);
-        ip = getClientIpAddr(request);
+        final File file = dataService.getFile(loginRequestBody.getFilename());
 
-        if (token != null) {
-            log.warn("resetting token '{}' ...", token);
+        if (!file.isFile()) {
+            badLogins.add(new BadLogin(request));
+            internalLog(request, "login failure; bad file: " + file);
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "What are you trying to assecc?");
         }
 
-        token = Long.toHexString(System.currentTimeMillis()) + "-" + UUID.randomUUID();
-        refreshValidTime();
+        final TokenHolder otherTokenHolder = getTokenHolder(file);
+        if (otherTokenHolder != null) {
+            tokenHolders.remove(otherTokenHolder);
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Someone else is logged in.");
+        }
 
-        log.info("login ip={}", getClientIpAddr(request));
-        log.info("token={}", token);
+        final TokenHolder tokenHolder = new TokenHolder()
+                .file(file)
+                .password(password)
+                .ip(ip)
+                .refreshAccess();
 
-        return token;
+        tokenHolders.add(tokenHolder);
+
+        log.info("login ip={}, token={}", tokenHolder.getIp(), tokenHolder.getToken());
+        return tokenHolder.getToken();
+    }
+
+    private synchronized TokenHolder getTokenHolder(File file) {
+
+        for (TokenHolder tokenHolder : new HashSet<>(tokenHolders)) {
+            if (tokenHolder.isFile(file)) {
+                return tokenHolder;
+            }
+        }
+
+        return null;
     }
 
     private void cleanBadLogins() {
-
         for (BadLogin badLogin : new HashSet<>(badLogins)) {
-
             if (!badLogin.isValid()) {
                 badLogins.remove(badLogin);
             }
         }
     }
 
+    private boolean isTooManyBadLogins() {
+        cleanBadLogins();
+        return badLogins.size() >= MAX_COUNT_BAD_LOGINS;
+    }
+
     @PostMapping(value = "/api/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
     public synchronized boolean logout(HttpServletRequest request) {
 
-        final String ip = getClientIpAddr(request);
+        final TokenHolder tokenHolder = getTokenHolder(request, false, false);
 
-        if (!ip.equals(Controller.ip)) {
-            log.info("logout from bad IP ({}); ignored", ip);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        log.info("logout {}", tokenHolder);
+
+        if (tokenHolder != null) {
+            tokenHolder.invalidate();
+        } else {
+
+            final String logText = "logout of not existing token holder: " + Utils.getClientIpAddr(request);
+            LOGS.add(logText);
+            log.info("{}", logText);
         }
 
-        if (!isIp(request)) {
-            log.info("logout from foreign IP ignored");
-            return false;
-        }
-
-        final String token = request.getHeader(HEADER_TOKEN);
-        log.info("logout token={}", token);
-
-        final boolean result = isTokenValid(token, false);
-
-        invalidateToken();
-
-        return result;
-    }
-
-    private synchronized void refreshValidTime() {
-        maxTokenValidTime = System.currentTimeMillis() + VALID_INTERVAL;
-    }
-
-    private synchronized boolean isTokenValid(String token, boolean refreshValidity) {
-
-        log.debug("token ->            {}", token);
-        log.debug("Controller.token -> {}", Controller.token);
-        log.debug("!PWD.empty -> {}", !PWD.isEmpty());
-        log.debug("maxTokenValidTime > System.currentTimeMillis() -> {}", maxTokenValidTime > System.currentTimeMillis());
-
-        final boolean isValid = token != null && token.equalsIgnoreCase(Controller.token) && !PWD.isEmpty() && maxTokenValidTime > System.currentTimeMillis();
-
-        if (isValid && refreshValidity) {
-            refreshValidTime();
-        } else if (!isValid) {
-            this.invalidateToken();
-        }
-
-        return isValid;
-    }
-
-    public synchronized void invalidateToken() {
-        setPwd(null);
-        Controller.token = null;
-        maxTokenValidTime = Long.MAX_VALUE;
+        return true;
     }
 
     @GetMapping(value = "/api/data", produces = MediaType.TEXT_PLAIN_VALUE)
     public String get(HttpServletRequest request) {
 
-        checkLoggedIn(request, true);
-
-        final String pwd = getPwd();
+        final TokenHolder tokenHolder = getTokenHolder(request, true, true);
 
         try {
 
-            return dataService.load(pwd);
+            return encryptor.decrypt(tokenHolder.getPassword(), tokenHolder.getFile());
 
         } catch (IllegalArgumentException | IOException exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "load error: " + exception.getMessage());
@@ -270,7 +199,7 @@ public class Controller {
     @PostMapping(value = "/api/data", consumes = MediaType.TEXT_PLAIN_VALUE)
     public void post(@RequestBody String payload, HttpServletRequest request) {
 
-        checkLoggedIn(request, true);
+        final TokenHolder tokenHolder = getTokenHolder(request, true, true);
 
         if (payload == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "no payload");
@@ -278,38 +207,59 @@ public class Controller {
 
         try {
 
-            dataService.store(getPwd(), payload.trim());
+            encryptor.encrypt(tokenHolder.getPassword(), payload.trim(), tokenHolder.getFile());
 
         } catch (IllegalArgumentException | IOException exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "safe error: " + exception.getMessage());
         }
     }
 
-    private void checkLoggedIn(HttpServletRequest request, boolean refreshValidity) {
+    private TokenHolder getTokenHolder(HttpServletRequest request, boolean refreshValidity, boolean throw403Exception) {
 
-        final String token = request.getHeader(HEADER_TOKEN);
+        final String headerToken = request.getHeader(HEADER_TOKEN);
 
+        if (headerToken == null && throw403Exception) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        } else if (isBlank(headerToken)) {
+            return null;
+        } else if (tokenHolders.isEmpty()) {
+            return null;
+        }
 
-        final boolean isCorrectToken = isTokenValid(token, refreshValidity);
-        final boolean isCorrectIp = isIp(request);
-        final boolean isOk = isCorrectToken && isCorrectIp;
+        final String ip = getClientIpAddr(request);
+        log.debug("amount TokenHolders to check: {}, {}", tokenHolders.size(), tokenHolders);
 
-        if (!isOk) {
-            final String logText = "checkLoggedIn forbidden [tokenOk=" + isCorrectToken + " (" + token + "), ipOk=" + isCorrectIp + " (" + getClientIpAddr(request) + ")]";
-            log.info(logText);
-            internalLog(request, logText);
+        for (TokenHolder aTokenHolder : new HashSet<>(tokenHolders)) {
+
+            if (!aTokenHolder.isToken(headerToken)) {
+                continue;
+            }
+
+            // only use the token holder with matching IP
+            if (!aTokenHolder.isIp(ip)) {
+                continue;
+            }
+
+            if (aTokenHolder.isValid(headerToken, refreshValidity)) {
+                return aTokenHolder;
+            } else {
+                aTokenHolder.invalidate();
+            }
+        }
+
+        if (throw403Exception) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
-    }
 
-    private boolean isIp(HttpServletRequest request) {
-        return request != null && ip != null && ip.equals(getClientIpAddr(request));
+        return null;
     }
 
     private synchronized void internalLog(HttpServletRequest request, Object object) {
-        while (LOGS.size() > 300) {
+
+        while (LOGS.size() > 500) {
             LOGS.remove(LOGS.size() - 1);
         }
+
         LOGS.add(0, LocalDateTime.now().format(ISO_LOCAL_DATE_TIME) + ", " + getClientIpAddr(request) + ", " + object);
     }
 
@@ -320,7 +270,122 @@ public class Controller {
 
     @Data
     public static class LoginRequestBody {
+
         private String password;
+        private String filename;
+
+        public void setPassword(String password) {
+
+            this.filename = null;
+            this.password = null;
+
+            final String[] result = new String[2];
+            if (isBlank(password)) {
+                return;
+            }
+
+            final int idx = password.indexOf(':');
+            if (idx < 0) {
+                return;
+            }
+
+            this.filename = password.substring(0, idx);
+            this.password = password.substring(idx + 1);
+        }
+    }
+
+    @Data
+    public static class SaveRequestBody {
+        private String file;
+        private String data;
+    }
+
+    /**
+     * Class / Object holding the information of a logged in user.
+     */
+    @Data
+    private static class TokenHolder {
+
+        private String token = Long.toHexString(System.currentTimeMillis()) + "-" + UUID.randomUUID();
+        private File file;
+        private String ip;
+        private long lastAccess = 0;
+        private String password;
+
+        public TokenHolder refreshAccess() {
+            lastAccess = System.currentTimeMillis();
+            return this;
+        }
+
+        TokenHolder ip(String ip) {
+            this.ip = ip;
+            return this;
+        }
+
+        TokenHolder file(File file) {
+            this.file = file;
+            return this;
+        }
+
+        TokenHolder password(String password) {
+            this.password = password;
+            return this;
+        }
+
+        synchronized void invalidate() {
+
+            this.file = null;
+            this.lastAccess = 0;
+            this.password = null;
+
+            Controller.tokenHolders.remove(this);
+        }
+
+        boolean isValid(String token, boolean refreshValidity) {
+
+            if (this.token == null) {
+                return false;
+            } else if (file == null || !file.isFile()) {
+                return false;
+            }
+
+            if (lastAccess + MINUTES_10 < System.currentTimeMillis()) {
+                log.info("isValid({}, {}):{} due to timeout ({} ms)", token, refreshValidity, false, System.currentTimeMillis() - (lastAccess + MINUTES_10));
+                return false;
+            }
+
+            if (isBlank(password)) {
+                return false;
+            }
+
+            if (!StringUtils.equals(token, this.token)) {
+                return false;
+            }
+
+            if (refreshValidity) {
+                lastAccess = System.currentTimeMillis();
+            }
+
+            return true;
+        }
+
+        public boolean isToken(String token) {
+            return isNotBlank(this.token) && this.token.equals(token);
+        }
+
+        public boolean isFile(File file) {
+            final String pathThisFile = Utils.getCanonicalPath(this.file);
+            final String pathParameterFile = Utils.getCanonicalPath(file);
+            return StringUtils.equals(pathThisFile, pathParameterFile);
+        }
+
+        public boolean isIp(String ip) {
+            return isNotBlank(this.ip) && this.ip.equals(ip);
+        }
+
+        public String toString() {
+            return TokenHolder.class.getSimpleName() + "{token=" + token + ", file=" + this.file + ", ip=" + this.ip + "}";
+        }
     }
 
     @Data
@@ -339,4 +404,6 @@ public class Controller {
             return timeToLiveUntil > System.currentTimeMillis();
         }
     }
+
+
 }

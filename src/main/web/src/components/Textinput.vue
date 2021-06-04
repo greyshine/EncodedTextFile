@@ -1,6 +1,12 @@
 <template>
 
-  <textarea id="text" v-model="text" :disabled="disabled" class="m1-lr" placeholder="text..."></textarea>
+  // TODO: show textarea only after successfull load/save
+  // TODO: hide when saving!
+
+  <img src="@/assets/waiting.gif"/>
+
+  <textarea id="text" v-model="text" :disabled="disabled" class="m1-lr" placeholder="text..."
+            @focus="focusTextarea"></textarea>
 
 </template>
 
@@ -18,15 +24,25 @@ export default {
     };
   },
 
+  beforeCreate() {
+    console.log('beforeCreated()');
+    this.$root.bus.on('load', () => this.load());
+    this.$root.bus.on('save', () => this.save());
+    console.log('beforeCreated().');
+  },
+
+  created() {
+  },
+
   mounted() {
     this.load();
-    this.$root.bus.on('save', () => this.save());
   },
 
   methods: {
 
     save() {
 
+      this.$root.bus.emit('message');
       this.disabled = true;
 
       const tokenValue = utils.getToken();
@@ -56,6 +72,7 @@ export default {
     load() {
 
       console.log('load', utils.getToken(), typeof utils.getToken());
+      this.$root.bus.emit('message');
 
       this.disabled = true;
 
@@ -72,19 +89,27 @@ export default {
 
             console.log('load', response);
 
+            const textdata = await response.text();
+
             if (response.status != 200) {
               this.disableUpdate = true;
-              console.error(await response.text());
+              console.error(textdata);
+              this.$root.bus.emit('message', textdata);
               return;
             }
 
-            this.text = await response.text();
+            this.text = textdata;
           })
           .finally(() => {
             this.disabled = false;
           });
+    },
+
+    focusTextarea() {
+      this.$root.bus.emit('message');
     }
   }
+
 }
 </script>
 

@@ -25,15 +25,27 @@ public class Encryptor {
             return MessageDigest.getInstance("SHA-256");
         }
     };
+
     public final String versionPrePostFix = "VERSION-1";
 
     public String getPrePostFix() {
         return versionPrePostFix;
     }
 
-    public void encrypt(String password, String text, OutputStream out) throws IOException {
+    public void encrypt(String password, String text, File file) throws IOException {
 
-        if (password == null || text == null || out == null) {
+        Assert.notNull(file, "file is null");
+        Assert.isTrue(!file.isDirectory(), "file is null");
+        Assert.isTrue(file.canWrite(), "file cannot be written");
+
+        try (OutputStream os = new FileOutputStream(file)) {
+            encrypt(password, text, os);
+        }
+    }
+
+    public synchronized void encrypt(String password, String text, OutputStream out) throws IOException {
+
+        if (text == null || out == null) {
             return;
         }
 
@@ -50,9 +62,20 @@ public class Encryptor {
         dos.flush();
     }
 
-    public String decrypt(String password, InputStream inputStream) throws IOException {
+    public String decrypt(String password, File file) throws IOException {
 
-        if (password == null || inputStream == null) {
+        Assert.notNull(file, "file is null");
+        Assert.isTrue(!file.isDirectory(), "file is null");
+        Assert.isTrue(file.canRead(), "file cannot be read");
+
+        try (InputStream is = new FileInputStream(file)) {
+            return decrypt(password, is);
+        }
+    }
+
+    public synchronized String decrypt(String password, InputStream inputStream) throws IOException {
+
+        if (inputStream == null) {
             return null;
         }
 
@@ -63,25 +86,27 @@ public class Encryptor {
         while (dis.available() > 0) {
             final int i = dis.readInt();
             final int c = i ^ saltIter.next();
-            ;
             result.append((char) c);
         }
 
+        log.debug("decrypted: {}", result.toString());
         return removePrePostFix(result.toString());
     }
 
     private String addPrePostFix(String text) {
-        return getPrePostFix() + (text == null ? "" : text) + getPrePostFix();
+        String prePostFix = getPrePostFix();
+        prePostFix = prePostFix == null ? "" : prePostFix;
+        return prePostFix + (text == null ? "" : text) + prePostFix;
     }
 
     private String removePrePostFix(String text) {
 
         final String prePostFix = getPrePostFix();
-        final int prePostFixLength = prePostFix.length();
+        final int prePostFixLength = prePostFix == null ? 0 : prePostFix.length();
 
         Assert.notNull(text, "text is null");
-        Assert.isTrue(text.startsWith(prePostFix), "text does not start as expected");
-        Assert.isTrue(text.endsWith(prePostFix), "text does not end as expected");
+        Assert.isTrue(text.startsWith(prePostFix == null ? "" : prePostFix), "text does not start as expected");
+        Assert.isTrue(text.endsWith(prePostFix == null ? "" : prePostFix), "text does not end as expected");
         Assert.isTrue(text.length() >= 2 * prePostFixLength, "text not as long as expected");
 
         return text.substring(prePostFixLength, text.length() - prePostFixLength);
