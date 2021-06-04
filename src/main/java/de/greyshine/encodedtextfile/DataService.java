@@ -7,94 +7,126 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+
+import static org.apache.commons.lang3.StringUtils.isBlank;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 @Service
 @Slf4j
 public class DataService {
 
-    final File data;
+    public final static String FILE_ENDING = "dat";
+    public final static Pattern PATTERN_FILE_NAME = Pattern.compile("[a-z0-9_\\-]{1,}");
+
+    private File dataDir = new File("./store").getCanonicalFile();
 
     @Autowired
     private Encryptor encryptor;
 
     public DataService(ApplicationArguments args) throws IOException {
 
-        data = new File(args.getSourceArgs()[args.getSourceArgs().length - 1]).getAbsoluteFile();
-        log.info("file exists/read {} {}", data.exists(), data.canWrite());
+        final String lastArg = args.getSourceArgs().length == 0 ? null : args.getSourceArgs()[args.getSourceArgs().length - 1];
 
-        if (!data.exists()) {
-            data.createNewFile();
+        if (lastArg != null && !lastArg.trim().startsWith("--")) {
+
+            final File dir = Utils.getCanonicalFile(new File(lastArg));
+
+            if (!dir.isDirectory()) {
+                System.err.println("Given base directory does not exist: " + dir);
+                System.exit(1);
+            }
+
+            dataDir = dir;
         }
 
-        Assert.isTrue(data.canWrite(), "Cannot access file: " + data);
-    }
+        final List<File> files = getFiles();
+        log.info("dataDir={}", dataDir);
+        log.info("files: {}", files);
 
-    public File getFile() {
-        return data;
-    }
-
-
-    public void buildInitialFileIfNeccessary(String password) throws IOException {
-
-        if (data.isFile() && data.canWrite()) {
-            return;
+        if (files.isEmpty()) {
+            log.error("no files found at {}", dataDir);
         }
 
-        Assert.isTrue(password != null && !password.isEmpty(), "Password is blank");
-        store(password, "");
-    }
-
-    public synchronized void store(final String password, final String data) throws IOException {
-
-        final File file = getFile();
-
-        Assert.notNull(file, "No file declared");
-        Assert.isTrue(file.canWrite(), "Cannot access file: " + file);
-
-        try (FileOutputStream fos = new FileOutputStream(file)) {
-            encryptor.encrypt(password, data, fos);
-            fos.flush();
+        for (File file : files) {
+            if (file.length() == 0) {
+                log.warn("intial setup needed: {}\nfirst access sets password", file);
+            }
         }
+
     }
 
-    public synchronized String load(String password) throws IOException {
-
-        final File file = getFile();
-
-        Assert.notNull(file, "No file declared");
-        Assert.isTrue(file.canWrite(), "Cannot access file: " + file);
-
-        final StringBuilder sb = new StringBuilder();
-        try (FileInputStream fis = new FileInputStream(file)) {
-            return encryptor.decrypt(password, fis);
+    public List<File> getFiles() {
+        final List<File> files = new ArrayList<>();
+        for (File file : dataDir.listFiles()) {
+            if (file.isFile() && file.getName().endsWith(".dat")) {
+                files.add(file);
+            }
         }
+        return files;
     }
 
-    public boolean isPassword(String password) throws IOException {
+    public File getDataDir() {
+        return dataDir;
+    }
 
-        password = password == null ? null : password.trim();
+    public boolean isFileAndPasswordOrCreate(String filename, String password) {
 
-        if (password == null || password.isEmpty()) {
+        if (isBlank(filename) || password == null) {
             return false;
         }
 
-        if (data.length() == 0) {
+        final File file = getFile(filename);
 
-            store(password, "Welcome with a new blank file...");
-            return true;
+        if (file == null || !file.isFile()) {
 
-        } else {
+            return false;
+
+        } else if (file.length() == 0) {
 
             try {
-                load(password);
-                return true;
-            } catch (Exception e) {
-                log.error("failed to check password '{}'", password.replaceAll(".", "*"));
-                return false;
+                initFile(file, password);
+            } catch (IOException e) {
+                log.error("Cannot initialize file: {} (password={}})", file, password == null ? "<null>" : "*****");
+                throw new IllegalStateException("Initial File initialization failed: " + e);
             }
         }
+
+        try {
+            load(filename, password);
+        } catch (Exception e) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public File getFile(final String name) {
+
+        Assert.notNull(name, "No propper file declared: " + name);
+        Assert.isTrue(PATTERN_FILE_NAME.matcher(name).matches(), "No propper file declared: " + name);
+        Assert.isTrue(!name.contains(".."), "No '..' in filename allowed: " + name);
+
+        final File file = new File(dataDir, name + "." + FILE_ENDING);
+
+        return file.isFile() ? file : null;
+    }
+
+    public String load(String name, String password) throws IOException {
+        return encryptor.decrypt(password, getFile(name));
+    }
+
+    public void initFile(File file, String password) throws IOException {
+
+        Assert.isTrue(file.isFile(), "File is not a file: " + file);
+        Assert.isTrue(file.canWrite(), "File cannot write: " + file);
+        Assert.isTrue(isNotBlank(password), "Password is blank");
+
+        encryptor.encrypt(password, "Initialized...", file);
+
+        log.info("initialized file {}", file);
     }
 }
