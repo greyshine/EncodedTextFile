@@ -38,7 +38,7 @@ started. Only existing empty files can initially be used as a store.
 
 Version 1.2:
 
-    9c92036b268454c46094c88bfdcc3794620f17cc251565423b96e77fccc61e3d
+    7333089be2a5c587087e8fb61ba725fe8a043685ee048ed4e7b2ab193c30f8b8
 
 ## Starting the maven packaged jar artifact
 
