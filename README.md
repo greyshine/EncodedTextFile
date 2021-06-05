@@ -41,11 +41,14 @@ Version 1.3:
 - redo correct sha versioning of jar artefact
 - Added maven cleaning of generated vue folders
 
-  sha256:
+    sha256: 60eaddf27749f5a190eb4072032add7d1ce5d2d8fbf2486a55392795e7304eb9
 
 Version 1.2:
 
-    sha256: 5afe010bbb4e38003a83efc46874831dfef1d535eef8d753893706095628ae54  
+    sha256: 5afe010bbb4e38003a83efc46874831dfef1d535eef8d753893706095628ae54
+
+_This SHA-256 has been wrongly/different included in this README.md before; original is the one uploaded with the packed
+artefact._
 
 ## Starting the maven packaged jar artifact
 
