@@ -40,14 +40,14 @@ Version 1.4:
 
 - removed some development output on the page
 
-  sha256:
+    sha256: 06877e9da16992e591607f7d779dccf6cc05a12fca1f48aa83543756af2b53a1
 
 Version 1.3:
 
 - redo correct sha versioning of jar artefact
 - Added maven cleaning of generated vue folders
 
-  sha256: 60eaddf27749f5a190eb4072032add7d1ce5d2d8fbf2486a55392795e7304eb9
+    sha256: 60eaddf27749f5a190eb4072032add7d1ce5d2d8fbf2486a55392795e7304eb9
 
 Version 1.2:
 
