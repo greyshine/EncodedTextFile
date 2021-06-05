@@ -14,7 +14,7 @@
 
     <groupId>de.greyshine</groupId>
     <artifactId>EncodedTextFile</artifactId>
-    <version>1.4</version>
+    <version>1.5-SNAPSHOT</version>
 
     <!-- see for packaging vuejs + springboot: -->
     <!-- https://blog.codecentric.de/en/2018/04/spring-boot-vuejs -->

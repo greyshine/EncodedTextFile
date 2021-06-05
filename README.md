@@ -36,6 +36,10 @@ started. Only existing empty files can initially be used as a store.
 
 ## <a name="sha256"></a> SHA-256 of the artefacts
 
+Version 1.5:
+
+    sha256: 
+
 Version 1.4:
 
 - removed some development output on the page
