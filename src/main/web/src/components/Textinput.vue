@@ -1,9 +1,6 @@
 <template>
 
-  // TODO: show textarea only after successfull load/save
-  // TODO: hide when saving!
-
-  <img src="@/assets/waiting.gif"/>
+  <!--img src="@/assets/waiting.gif"/-->
 
   <textarea id="text" v-model="text" :disabled="disabled" class="m1-lr" placeholder="text..."
             @focus="focusTextarea"></textarea>

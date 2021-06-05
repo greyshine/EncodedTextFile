@@ -36,12 +36,18 @@ started. Only existing empty files can initially be used as a store.
 
 ## <a name="sha256"></a> SHA-256 of the artefacts
 
+Version 1.4:
+
+- removed some development output on the page
+
+  sha256:
+
 Version 1.3:
 
 - redo correct sha versioning of jar artefact
 - Added maven cleaning of generated vue folders
 
-    sha256: 60eaddf27749f5a190eb4072032add7d1ce5d2d8fbf2486a55392795e7304eb9
+  sha256: 60eaddf27749f5a190eb4072032add7d1ce5d2d8fbf2486a55392795e7304eb9
 
 Version 1.2:
 
